@@ -2,6 +2,8 @@
 
 Manage it over SSH (`ssh homeserver`) and host apps straight from your Git repos with **Coolify**, just like a cloud VPS (Oracle, AWS, DigitalOcean...).
 
+**New to this? Read [GUIDE.md](GUIDE.md):** a step-by-step guide to deploying apps, connecting from other computers (at home and away) and rebuilding everything from scratch. This README is the short reference.
+
 | File | Runs on | What it does |
 |---|---|---|
 | `setup-server.sh` | the Ubuntu laptop | updates the system, keeps the laptop awake with the lid closed and the Wi-Fi up, sets up the firewall, fail2ban and automatic security updates, installs Coolify (and Docker), switches SSH to keys only once your key is on the laptop, and with `--domain` puts your apps on the internet through a Cloudflare Tunnel |
@@ -63,12 +65,12 @@ To update the scripts later, run the first line again.
 
 ## Deploying an app
 
-In Coolify: **Projects → Add → Add Resource → Public Repository** (or **Private Repository (with GitHub App)**), paste the repo URL, pick the branch, and **Deploy**. Coolify detects Node, Python, static sites and more (Nixpacks), or uses your `Dockerfile` / `docker-compose.yml`. Each app gets an address automatically: `https://<random>.<your-domain>` with `--domain`, otherwise `http://<random>.<laptop-ip>.sslip.io`. Change it under the app's **Domains**. You can list several, separated by commas, e.g. `https://myapp.example.com,http://myapp.192.168.29.66.sslip.io`.
+In Coolify: **Projects → New project**, open it, open **production**, then **New resource → Public Git Repository** (or **Git Repository (with GitHub App)** once you have a [GitHub App](#deploy-automatically-on-git-push)), pick the repo and branch, and **Deploy**. [GUIDE.md](GUIDE.md#4-deploy-an-app) has every step. Coolify detects Node, Python, static sites and more (Nixpacks), or uses your `Dockerfile` / `docker-compose.yml`. Each app gets an address automatically: `https://<random>.<your-domain>` with `--domain`, otherwise `http://<random>.<laptop-ip>.sslip.io`. Change it under the app's **Domains**. You can list several, separated by commas, e.g. `https://myapp.example.com,http://myapp.192.168.29.66.sslip.io`.
 
 - **Redeploy:** the **Deploy** button, or from any PC on your network with the app's deploy webhook (app → **Webhooks**). It needs an API token: **Keys & Tokens → API Tokens**, with the *deploy* permission.
   `curl -X POST -H "Authorization: Bearer <token>" "http://<laptop-ip>:8000/api/v1/deploy?uuid=<app-uuid>"`
 - **Automatic deploy on `git push`**, like Vercel: see [below](#deploy-automatically-on-git-push) (needs `--domain`).
-- **Databases:** **Add Resource → PostgreSQL / MongoDB / Redis**, then paste its internal URL into the app's environment variables.
+- **Databases:** **New resource → PostgreSQL / MongoDB / Redis**, then paste its **URL (internal)** into the app's environment variables.
 
 ## Put your apps on the internet with your own domain
 
@@ -94,7 +96,7 @@ GitHub tells Coolify about each push through `https://hooks.example.com`. That a
 3. Under **Webhook endpoint** pick **Use a custom endpoint**, and as the **Custom endpoint** enter exactly the address in your browser's address bar, e.g. `http://192.168.29.66:8000`. GitHub sends your browser back to that address, and Coolify only finishes the setup for a signed-in visitor, so it must be the dashboard's own address (not `hooks.example.com`). Click **Register with GitHub**, then **Create GitHub App** on GitHub; you land back in Coolify.
 4. Click **Install repositories**, pick all repos or some, and **Install**; you land back in Coolify again.
 5. Now point the webhooks at the public address. On GitHub: **Settings → Developer settings → GitHub Apps →** your app **→ Edit**, set **Webhook URL** to `https://hooks.example.com/webhooks/source/github/events`, and **Save changes** (leave the secret as it is).
-6. Add apps with **Add Resource → Private Repository (with GitHub App)**. Every push to the app's branch now deploys it.
+6. Add apps with **New resource → Git Repository (with GitHub App)**. Every push to the app's branch now deploys it.
 
 **For a single repo: a webhook.**
 
