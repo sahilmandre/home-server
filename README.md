@@ -89,10 +89,12 @@ GitHub tells Coolify about each push through `https://hooks.example.com`. That a
 
 **For all your repos at once (recommended): a GitHub App.** It also covers private repos and can deploy a preview of each pull request.
 
-1. In Coolify: **Sources → + Add → GitHub App**, give it a name, and continue.
-2. Under **Webhook endpoint** pick **Use a custom endpoint**, and enter `https://hooks.example.com` as the **Custom endpoint**. Click **Register with GitHub**, then create the app on GitHub.
-3. GitHub sends you back to a "not found" page on `hooks.example.com`. That's expected: the app is already saved, but the dashboard isn't public. Return to the Coolify tab, reload, and click **Install repositories** (all repos, or the ones you pick). The same "not found" page follows; go back to Coolify again.
-4. Add apps with **Add Resource → Private Repository (with GitHub App)**. Every push to the app's branch now deploys it.
+1. Open the Coolify dashboard the way you usually do, e.g. `http://192.168.29.66:8000`, and sign in.
+2. **Sources → + Add → GitHub App**, give it a name, and continue.
+3. Under **Webhook endpoint** pick **Use a custom endpoint**, and as the **Custom endpoint** enter exactly the address in your browser's address bar, e.g. `http://192.168.29.66:8000`. GitHub sends your browser back to that address, and Coolify only finishes the setup for a signed-in visitor, so it must be the dashboard's own address (not `hooks.example.com`). Click **Register with GitHub**, then **Create GitHub App** on GitHub; you land back in Coolify.
+4. Click **Install repositories**, pick all repos or some, and **Install**; you land back in Coolify again.
+5. Now point the webhooks at the public address. On GitHub: **Settings → Developer settings → GitHub Apps →** your app **→ Edit**, set **Webhook URL** to `https://hooks.example.com/webhooks/source/github/events`, and **Save changes** (leave the secret as it is).
+6. Add apps with **Add Resource → Private Repository (with GitHub App)**. Every push to the app's branch now deploys it.
 
 **For a single repo: a webhook.**
 
