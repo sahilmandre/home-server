@@ -101,7 +101,7 @@ scp homeserver:~/notes.txt .\        # from the server to this PC
 
 The app must be in a GitHub repo; the GitHub App can see all of yours. Find out three things, usually from the repo's `package.json` or README:
 
-1. **The port** it listens on. Look for `PORT` or `listen(3000)` in the code. Many Node apps use 3000.
+1. **The port** it listens on. Look for `PORT` or `listen(3000)` in the code. Many Node apps use 3000. Ignore the development ports: Vite's 5173, for example, only exists while you code. A deployed React or Vite frontend is built into plain files, and either Coolify serves them itself (a static site), or your backend serves them (then use the backend's port, and deploy one app, not two).
 2. **How it builds and starts.** The `"build"` and `"start"` scripts in `package.json`; Coolify runs them by itself.
 3. **Its settings (environment variables):** database URLs, API keys and so on. The names are usually in `.env.example`.
 
@@ -148,9 +148,9 @@ The "internal" URL only works for apps on the same server, which is what you wan
 
 ### Example: job-mailer
 
-- It's one repo with `client`, `server` and `shared` folders. `npm run build` builds both halves, and `npm start` runs the server.
-- It stores its data in **MongoDB**: add a MongoDB resource as above, and put its internal URL into the setting job-mailer reads for it.
-- It drives a real Chrome browser with **Puppeteer** (for LinkedIn and Naukri). Nixpacks doesn't include the system libraries Chrome needs, so job-mailer needs a small `Dockerfile` in its repo that adds them. Without it, the app is likely to fail when it starts Chrome. Ask Claude to write and test that Dockerfile.
+- It's one repo with `client`, `server` and `shared` folders. `npm run build` builds both halves, and `npm start` runs the server, which also serves the built frontend. So it's **one app, port 5000**. (5173 is only Vite's development server.)
+- Settings it needs: `MONGODB_URI` (from a MongoDB resource, as above), `JWT_SECRET` and `ENCRYPTION_KEY` (each from `ssh homeserver openssl rand -hex 32`; keep `ENCRYPTION_KEY` safe, because data saved with one key can't be read with another), `NODE_ENV=production`, `FRONTEND_URL=https://<its-address>` and `TRUST_PROXY=true`.
+- It drives a real Chrome browser with **Puppeteer** (for LinkedIn and Naukri). Nixpacks doesn't include the system libraries Chrome needs, so job-mailer needs a small `Dockerfile` in its repo that adds them. It also keeps its LinkedIn and Naukri sign-ins in a folder (`data/browser-profiles`), which needs Coolify's persistent storage, or the sign-ins are lost on every redeploy. Ask Claude to set both up.
 
 ### When a deploy doesn't work
 
