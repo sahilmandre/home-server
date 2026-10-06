@@ -150,7 +150,12 @@ The "internal" URL only works for apps on the same server, which is what you wan
 
 - It's one repo with `client`, `server` and `shared` folders. `npm run build` builds both halves, and `npm start` runs the server, which also serves the built frontend. So it's **one app, port 5000**. (5173 is only Vite's development server.)
 - Settings it needs: `MONGODB_URI` (from a MongoDB resource, as above), `JWT_SECRET` and `ENCRYPTION_KEY` (each from `ssh homeserver openssl rand -hex 32`; keep `ENCRYPTION_KEY` safe, because data saved with one key can't be read with another), `NODE_ENV=production`, `FRONTEND_URL=https://<its-address>` and `TRUST_PROXY=true`.
-- It drives a real Chrome browser with **Puppeteer** (for LinkedIn and Naukri). Nixpacks doesn't include the system libraries Chrome needs, so job-mailer needs a small `Dockerfile` in its repo that adds them. It also keeps its LinkedIn and Naukri sign-ins in a folder (`data/browser-profiles`), which needs Coolify's persistent storage, or the sign-ins are lost on every redeploy. Ask Claude to set both up.
+- It drives a Chrome browser with **Puppeteer** (for LinkedIn and Naukri). No `Dockerfile` is needed: `npm install` downloads Chrome, and Nixpacks adds the system libraries it needs. But apps in Docker run as the `root` user, and Chrome refuses to start as root unless it's given `--no-sandbox` ("Running as root without --no-sandbox is not supported"). job-mailer adds that flag itself when it runs as root (`server/src/lib/browser.ts`).
+- It keeps its LinkedIn and Naukri sign-ins in `/app/server/data`, so that folder needs [persistent storage](#keep-files-across-deploys), or every redeploy signs you out. (Done for job-mailer, along with `/app/server/logs`, where it saves debug screenshots.)
+
+### Keep files across deploys
+
+Every deploy starts the app from a fresh copy, so anything it saved in its own folders is gone. Store data in a database, or give each folder the app writes to a volume: the app → **Persistent Storage** → **+ Add** → **Volume mount**, any **Name**, and as **Destination Path** the folder inside the container (the repo's files are under `/app`). Then **Deploy**. Files in that folder now stay on the server's disk.
 
 ### When a deploy doesn't work
 
@@ -160,6 +165,8 @@ The "internal" URL only works for apps on the same server, which is what you wan
 | "Bad Gateway" | Wrong port, or the app listens on `localhost` | Fix **Ports exposes** on **General**; make the app listen on `0.0.0.0` |
 | "404 page not found" | The address doesn't match the app's domain | Check the domain's spelling on **General** |
 | "no available server" | The app crashed while starting | Open the app's **Logs** to see the error |
+| Uploads, sign-ins or other files disappear after a deploy | The app saves them in its own folder | [Keep files across deploys](#keep-files-across-deploys) |
+| "Running as root without --no-sandbox is not supported" | A Puppeteer/Chrome app running as root, the default in Docker | Start Chrome with `--no-sandbox` (job-mailer does this) |
 | A push didn't redeploy | GitHub's message didn't arrive, or a different branch | On GitHub: **Settings → Developer settings → GitHub Apps → job-mailer → Edit → Advanced → Recent Deliveries**. Each push should show a green 200. Also check the branch matches the app's |
 
 ## 5. Connect from another computer
