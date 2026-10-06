@@ -1,11 +1,17 @@
 # Home server: an Ubuntu laptop that works like a VPS
 
-SSH in from anywhere on your network (`ssh homeserver`), and host apps with **Coolify**, just like a cloud VPS (Oracle, AWS, DigitalOcean...).
+Manage it over SSH (`ssh homeserver`) and host apps straight from your Git repos with **Coolify**, just like a cloud VPS (Oracle, AWS, DigitalOcean...).
 
 | File | Runs on | What it does |
 |---|---|---|
-| `setup-server.sh` | the Ubuntu laptop | installs SSH, keeps the laptop awake with the lid closed, sets up the firewall, fail2ban and automatic security updates, installs Coolify (and Docker), and switches SSH to keys only once your key is on the laptop |
-| `connect.ps1` | your Windows PC, once | creates an SSH key, copies it to the laptop, gives your Ubuntu user password-free `sudo` (like a cloud VPS), adds the `ssh homeserver` shortcut |
+| `setup-server.sh` | the Ubuntu laptop | updates the system, keeps the laptop awake with the lid closed and the Wi-Fi up, sets up the firewall, fail2ban and automatic security updates, installs Coolify (and Docker), switches SSH to keys only once your key is on the laptop, and with `--domain` puts your apps on the internet through a Cloudflare Tunnel |
+| `connect.ps1` | each Windows PC you manage it from, once | creates an SSH key, copies it to the laptop, gives your Ubuntu user password-free `sudo` (like a cloud VPS), adds the `ssh homeserver` shortcut |
+
+## Who can reach the server
+
+- **Your home network and your Tailscale devices:** everything (SSH, the Coolify dashboard, your apps).
+- **The internet:** nothing, over IPv4 or IPv6. Docker normally lets the ports it publishes bypass `ufw`; the script closes that gap too.
+- **Your apps** can still be public, at `https://<name>.<your-domain>`: they're served through a Cloudflare Tunnel, which the server opens from the inside, so no port is open (see [Your own domain](#put-your-apps-on-the-internet-with-your-own-domain)).
 
 ## 1. On the Ubuntu laptop: get the files and run the setup
 
@@ -15,15 +21,18 @@ Plug in the charger, and if you can, an Ethernet cable. Then open a terminal:
 sudo apt update && sudo apt install -y git
 git clone https://github.com/sahilmandre/home-server.git
 cd home-server
-sudo bash setup-server.sh --hostname homeserver
+sudo bash setup-server.sh --tailscale --admin-email you@example.com
 ```
 
-Options: `--headless` (no desktop: frees about 1 GB of RAM, good for a server laptop), `--no-coolify`, `--timezone Asia/Kolkata`.
+Options: `--admin-email EMAIL` (creates the Coolify admin account during the install, recommended), `--domain DOMAIN` (apps on the internet on your own domain, [see below](#put-your-apps-on-the-internet-with-your-own-domain)), `--tailscale` (reach it from anywhere, recommended), `--headless` (no desktop: frees about 1 GB of RAM), `--no-coolify`, `--hostname NAME`, `--timezone Asia/Kolkata`.
 
 When it finishes:
 
-1. **Open `http://<laptop-ip>:8000` straight away and create your Coolify admin account.** The first person to open it becomes the admin. You can do this from the laptop's own browser too: `http://localhost:8000`.
-2. Note the laptop's address and your username: `hostname -I && whoami`. In your router's settings, reserve that IP for the laptop ("DHCP reservation" / "static lease"), so it never changes.
+1. **Sign in to Coolify at `http://<laptop-ip>:8000`** with the email and password in `/root/coolify-admin.txt` (`sudo cat /root/coolify-admin.txt`), then change the password under your profile. Without `--admin-email`, open the dashboard straight away and create the account: the first person to open it becomes the admin.
+2. In your router's settings, reserve the laptop's IP ("DHCP reservation" / "static lease"), so it never changes.
+3. If you used `--tailscale` and it says you're not signed in: run `sudo tailscale up` and open the link it prints.
+
+Every app gets its own address, like `http://myapp.192.168.29.66.sslip.io`, with no DNS setup: sslip.io answers any such name with the IP inside it. (The setup presets this as the server's **Wildcard Domain** in Coolify.)
 
 SSH still accepts your password at this point, because the laptop doesn't have your key yet.
 
@@ -35,30 +44,69 @@ cd home-server
 powershell -ExecutionPolicy Bypass -File .\connect.ps1
 ```
 
-Enter the IP and username from step 1. It asks for your Ubuntu password twice; after that you never need it again. Check with `ssh homeserver`.
+Enter the IP and username the setup printed. It asks for your Ubuntu password twice; after that you never need it again. Check with `ssh homeserver`.
 
 If a company VPN is connected, it may block your home network. Disconnect it for this.
+
+**Another PC later:** run `connect.ps1` there too. The server no longer accepts passwords by then, so the script prints one line to run on a PC that's already connected; after that, run `connect.ps1` again.
 
 ## 3. Switch SSH to keys only, and reboot
 
 Run the setup once more, now that your key is on the laptop. It's safe to re-run, and this time it turns password sign-in off:
 
 ```powershell
-ssh -t homeserver "cd ~/home-server && git pull && sudo bash setup-server.sh --hostname homeserver"
+ssh -t homeserver "cd ~/home-server && git pull && sudo bash setup-server.sh --tailscale"
 ssh homeserver sudo reboot
 ```
 
-To update the scripts later, run `git pull` in `~/home-server` on the laptop.
+To update the scripts later, run the first line again.
+
+## Deploying an app
+
+In Coolify: **Projects → Add → Add Resource → Public Repository** (or **Private Repository (with GitHub App)**), paste the repo URL, pick the branch, and **Deploy**. Coolify detects Node, Python, static sites and more (Nixpacks), or uses your `Dockerfile` / `docker-compose.yml`. Each app gets an address automatically: `https://<random>.<your-domain>` with `--domain`, otherwise `http://<random>.<laptop-ip>.sslip.io`. Change it under the app's **Domains**. You can list several, separated by commas, e.g. `https://myapp.example.com,http://myapp.192.168.29.66.sslip.io`.
+
+- **Redeploy:** the **Deploy** button, or from any PC on your network with the app's deploy webhook (app → **Webhooks**). It needs an API token: **Keys & Tokens → API Tokens**, with the *deploy* permission.
+  `curl -X POST -H "Authorization: Bearer <token>" "http://<laptop-ip>:8000/api/v1/deploy?uuid=<app-uuid>"`
+- **Automatic deploy on `git push`**, like Vercel: see [below](#deploy-automatically-on-git-push) (needs `--domain`).
+- **Databases:** **Add Resource → PostgreSQL / MongoDB / Redis**, then paste its internal URL into the app's environment variables.
+
+## Put your apps on the internet with your own domain
+
+The domain can stay with any registrar (Hostinger, GoDaddy...); only its DNS moves to Cloudflare, on the free plan.
+
+1. In Cloudflare, **Add a domain**, pick the **Free** plan and check the records it copies over (especially email/MX records). At your registrar, replace the nameservers with the two Cloudflare shows (Hostinger: **Domains → your domain → DNS / Nameservers → Edit**). Wait for Cloudflare's "active" email.
+2. Run the setup with your domain, open the link it prints, pick the domain and click **Authorize**:
+   ```powershell
+   ssh -t homeserver "cd ~/home-server && git pull && sudo bash setup-server.sh --tailscale --domain example.com"
+   ```
+3. In Coolify, give an app a domain such as `https://myapp.example.com` (new apps get one automatically) and deploy. It's live within a minute, with HTTPS, from anywhere.
+
+How it works: the script adds one DNS record, `*.example.com`, that sends every name without a record of its own to the tunnel, and from there to Coolify, which picks the app by name. Records you already have, like `example.com` or `www`, keep pointing where they did. Write app domains with `https://`: visitors who type `http://` are then sent to the secure address.
+
+## Deploy automatically on git push
+
+GitHub tells Coolify about each push through `https://hooks.example.com`. That address only lets through Coolify's webhooks, each checked against a secret; the dashboard itself stays on your home network and Tailscale.
+
+**For all your repos at once (recommended): a GitHub App.** It also covers private repos and can deploy a preview of each pull request.
+
+1. In Coolify: **Sources → + Add → GitHub App**, give it a name, and continue.
+2. Under **Webhook endpoint** pick **Use a custom endpoint**, and enter `https://hooks.example.com` as the **Custom endpoint**. Click **Register with GitHub**, then create the app on GitHub.
+3. GitHub sends you back to a "not found" page on `hooks.example.com`. That's expected: the app is already saved, but the dashboard isn't public. Return to the Coolify tab, reload, and click **Install repositories** (all repos, or the ones you pick). The same "not found" page follows; go back to Coolify again.
+4. Add apps with **Add Resource → Private Repository (with GitHub App)**. Every push to the app's branch now deploys it.
+
+**For a single repo: a webhook.**
+
+1. In Coolify: the app → **Webhooks** → **GitHub Webhook Secret**: enter a long random value and save.
+2. On GitHub: the repo → **Settings → Webhooks → Add webhook**. Payload URL `https://hooks.example.com/webhooks/source/github/events/manual`, content type `application/json`, the same secret, **Just the push event**.
+
+GitHub's **Recent Deliveries** tab (on the webhook or the GitHub App's settings) shows each push it sent and Coolify's answer, which is the first place to look if a push doesn't deploy.
 
 ## Reaching it from outside your home
 
-The laptop sits behind your home router, so out of the box it's only reachable on your home network. Two free options, and you can use both:
+- **SSH and the dashboard from anywhere: Tailscale.** A private network between your devices. With Tailscale on your phone or PC, use the laptop's Tailscale name: `ssh <user>@<hostname>`, `http://<hostname>:8000`. No open ports.
+- **Public websites: Cloudflare Tunnel** (`--domain`, [above](#put-your-apps-on-the-internet-with-your-own-domain)). Works even if your ISP gives you no public IP (common with Jio and Airtel fibre).
 
-- **SSH from anywhere: Tailscale.** A private network between your devices. Install it on the laptop and on your phone or PC, then `ssh homeserver` works from anywhere, with no open ports.
-- **Public websites: Cloudflare Tunnel.** Serves your Coolify apps on your own domain, even if your ISP gives you no public IP (common with Jio and Airtel fibre). You need a domain on Cloudflare (free plan). Coolify has a built-in guide: *Coolify docs → Knowledge base → Cloudflare Tunnels*.
-- **Port forwarding** (router: 80/443 → laptop) only works if your connection has a real public IP.
-
-Both can be set up over SSH; you only approve a sign-in link in your browser.
+Both are set up by the script over SSH; you only approve a sign-in link in your browser.
 
 ## Differences from a real VPS
 
@@ -66,10 +114,12 @@ Both can be set up over SSH; you only approve a sign-in link in your browser.
 - Home upload speed limits how fast your sites serve.
 - In the BIOS, turn on *"Power on after AC loss"* / *"Restore on AC power"*, if available, so it comes back by itself after a long outage.
 - Keep the laptop somewhere ventilated, lid closed or open.
-- Docker publishes container ports past `ufw`. Only expose apps through Coolify's proxy (80/443), not by publishing raw ports.
+- Every device on your home network can reach every port on the server. Fine at home; don't connect it to a network you don't trust.
 
 ## Undo
 
 - Allow password sign-in again: `sudo rm /etc/ssh/sshd_config.d/01-server.conf && sudo systemctl reload ssh`
 - Get the desktop back after `--headless`: `sudo systemctl set-default graphical.target`
 - Allow sleep again: `sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target && sudo rm /etc/systemd/logind.conf.d/10-server.conf`
+- Wi-Fi power saving back on: `sudo rm /etc/NetworkManager/conf.d/server-wifi-powersave-off.conf` (applies after a reboot)
+- Take the apps off the internet: `sudo systemctl disable --now cloudflared`, then delete the `*` record on Cloudflare's DNS page.

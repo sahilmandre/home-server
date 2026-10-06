@@ -43,8 +43,16 @@ $publicKey = (Get-Content "$key.pub" -Raw).Trim()
 
 Step "Copying the key to $target (enter your Ubuntu password)"
 $install = "umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; grep -qxF '$publicKey' ~/.ssh/authorized_keys || echo '$publicKey' >> ~/.ssh/authorized_keys"
-ssh -o StrictHostKeyChecking=accept-new $target $install
-if ($LASTEXITCODE -ne 0) { Fail "Couldn't sign in to $target. Is SSH installed and running on the laptop, and are both on the same network?" }
+# Offering only this key means a re-run works once the server is key-only, and other keys in
+# ~/.ssh can't use up the server's sign-in attempts before the password prompt.
+ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new $target $install
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "Couldn't sign in to $target." -ForegroundColor Red
+  Write-Host "If the server already accepts keys only (it was set up from another PC), run this on that PC, then run this script here again:"
+  Write-Host "  echo '$publicKey' | ssh $Alias `"tr -d '\r' >> ~/.ssh/authorized_keys`""
+  Write-Host "Otherwise: is SSH running on the laptop, and are both on the same network?"
+  exit 1
+}
 
 Step "Password-free sudo for $User (enter your Ubuntu password once more)"
 $sudoers = "/etc/sudoers.d/90-$User-nopasswd"
