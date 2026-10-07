@@ -122,10 +122,11 @@ if grep -qx Battery /sys/class/power_supply/*/type 2>/dev/null; then
 # another WAKE_EVERY minutes; power back, a normal start. To change the numbers, put them in
 # /etc/default/power-guard.
 #   power-guard status   is it on the charger, and how full is the battery
-# For a router on a UPS and cuts of an hour or two: run as long as is safe, and be back within
-# minutes. For longer cuts, a higher SHUTDOWN_AT leaves more charge for the checks.
-SHUTDOWN_AT=15
-WAKE_EVERY=5
+# A worn battery's last 30% or so can't be trusted: it can still read 12% when it's nearly empty,
+# and the surge of starting up then cuts it out completely, which also loses the wake-up time and
+# leaves the laptop off. 40% leaves enough for hours of checks. With a healthy battery, 20-25% is fine.
+SHUTDOWN_AT=40
+WAKE_EVERY=10
 # shellcheck source=/dev/null
 [ -r /etc/default/power-guard ] && . /etc/default/power-guard
 
@@ -134,6 +135,14 @@ charge() {
   for s in /sys/class/power_supply/*; do
     [ "$(cat "$s/type" 2>/dev/null)" = Battery ] && [ "$(cat "$s/scope" 2>/dev/null)" != Device ] &&
       cat "$s/capacity" 2>/dev/null && return
+  done
+}
+
+# Its voltage, e.g. "10.4 V": unlike the percentage, it shows how empty a worn battery really is.
+volts() {
+  for s in /sys/class/power_supply/*; do
+    [ "$(cat "$s/type" 2>/dev/null)" = Battery ] && [ "$(cat "$s/scope" 2>/dev/null)" != Device ] &&
+      awk '{ printf "%.1f V", $1 / 1000000 }' "$s/voltage_now" 2>/dev/null && return
   done
 }
 
@@ -153,7 +162,8 @@ on_battery() {
 low() { on_battery && pct="$(charge)" && [ "$pct" -le "$SHUTDOWN_AT" ] 2>/dev/null; }
 
 off_for_now() {
-  echo "$1: shutting down, switching on again in $WAKE_EVERY minutes to check for power"
+  v="$(volts)"
+  echo "$1${v:+, $v}: shutting down, switching on again in $WAKE_EVERY minutes to check for power"
   rtcwake -m no -s $((WAKE_EVERY * 60)) >/dev/null ||
     echo "Couldn't set the wake-up time: once power is back, press the power button"
   systemctl --no-block poweroff
@@ -169,7 +179,8 @@ case "$1" in
     done ;;
   status)
     if on_battery; then
-      echo "On battery: $(charge)% left. At $SHUTDOWN_AT% it shuts down, then checks for power every $WAKE_EVERY minutes."
+      v="$(volts)"
+      echo "On battery: $(charge)% left${v:+ ($v)}. At $SHUTDOWN_AT% it shuts down, then checks for power every $WAKE_EVERY minutes."
     else
       echo "On the charger. Battery: $(charge)%."
     fi ;;

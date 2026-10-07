@@ -113,9 +113,11 @@ GitHub's **Recent Deliveries** tab (on the webhook or the GitHub App's settings)
 
 ## Power cuts
 
-The battery keeps the server running at first. At 15% it shuts down cleanly and sets the laptop's clock to switch it on 5 minutes later. Each time it starts, it checks: still no charger, off for another 5 minutes; power back, a normal start. So it's back by itself within about 5 minutes of the power, as long as the battery doesn't run flat first. To change the numbers, put them in `/etc/default/power-guard` (`SHUTDOWN_AT=15`, `WAKE_EVERY=5`). They suit a router on a UPS and cuts of an hour or two; for longer cuts, a higher `SHUTDOWN_AT` leaves more charge for the checks. See what happened with `journalctl -t power-guard`.
+The battery keeps the server running at first. At 40% it shuts down cleanly and sets the laptop's clock to switch it on 10 minutes later. Each time it starts, it checks: still no charger, off for another 10 minutes; power back, a normal start. So it's back by itself within about 10 minutes of the power, as long as the battery doesn't run flat first. If it does, the clock's wake-up time is lost too, and only the power button (or a BIOS "power on when AC is connected" setting) starts it again.
 
-It relies on the laptop's clock alarm being able to switch it on (the RTC alarm, which `rtcwake` sets). Most laptops support this; check yours once with the charger plugged in. `sudo rtcwake -m no -s 120 && sudo systemctl poweroff` should switch it back on after two minutes. If your BIOS has a "power on when AC is connected" setting, turn that on too.
+40% is high on purpose. A worn battery's percentage can't be trusted near the end: this laptop's read 12% when it was nearly empty, and the surge of the next start cut it out. With a healthy battery, 20-25% is fine. To change the numbers, put them in `/etc/default/power-guard` (`SHUTDOWN_AT=40`, `WAKE_EVERY=10`). See what happened during a cut, with the battery's voltage, with `journalctl -t power-guard`.
+
+It relies on the laptop's clock alarm being able to switch it on (the RTC alarm, which `rtcwake` sets). Most laptops support this; check yours once. `sudo rtcwake -m no -s 120 && sudo systemctl poweroff` should switch it back on after two minutes. If your BIOS has a "power on when AC is connected" setting, turn that on too.
 
 ## Reaching it from outside your home
 

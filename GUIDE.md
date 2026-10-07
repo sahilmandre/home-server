@@ -263,13 +263,17 @@ If no computer can connect any more (for example, you lost the only PC with a ke
 - **Coolify** updates itself.
 - **Disk space:** check with `ssh homeserver df -h /`. Every deploy keeps a copy of the app's image. If free space drops below about 20 GB, `ssh homeserver docker image prune -a -f` removes the images no app is using; running apps are not affected.
 - **Power cuts** are handled by themselves, in three stages:
-  1. The battery keeps the server running. This battery is worn: it holds about 15 Wh where a new one holds 41 Wh, so that's about 2 hours. A new battery (HP part TF03XL; check the number on your old one) would make it about 5½ hours.
-  2. At 15% the server shuts down cleanly, rather than running until the battery dies in the middle of writing something.
-  3. Every 5 minutes, the laptop's clock switches it on to check for power. If the charger is still dead, it switches off again within about 35 seconds. Once power is back, it starts normally. Your apps are back about 5 minutes after the power is.
+  1. The battery keeps the server running. This battery is worn: it holds about 15 Wh where a new one holds 41 Wh, so it reaches 40% after about 1¼ hours.
+  2. At 40% the server shuts down cleanly, rather than running until the battery dies in the middle of writing something.
+  3. Every 10 minutes, the laptop's clock switches it on to check for power. If the charger is still dead, it switches off again within about 35 seconds. Once power is back, it starts normally. Your apps are back about 10 minutes after the power is.
 
-  With this battery, the remaining 15% lasts about 2 hours of these checks; with a new one, about 5. If a cut lasts even longer and the battery runs flat, press the power button once power is back. (This HP's BIOS has no "power on when the charger connects" setting, so the clock does that job.) To see what happened during a cut: `ssh homeserver journalctl -t power-guard`.
+  The remaining 40% lasts about 3½ hours of these checks, so a cut of up to about 4½ hours is covered, about as long as the router's UPS lasts. To see what happened during a cut: `ssh homeserver journalctl -t power-guard`.
 
-  These numbers suit your home: the router is on a UPS and cuts last an hour or two. If the server is ever still off after a cut, the old battery probably died before reaching 15%. Raise the limit to 25% by putting `SHUTDOWN_AT=25` in `/etc/default/power-guard` on the server.
+  **Why 40%, and not lower:** a worn battery's percentage can't be trusted near the end. On 7 October, at 15%, the server stopped as planned and checked twice, reading 14% and then 12%. By then the battery was really almost empty (10.4 V, where 12.6 V is full). The burst of power at the next start cut it out completely, and the server stayed off.
+
+  **If the battery does run completely flat** (a cut longer than about 4½ hours), the laptop stays off when power returns, and only its power button starts it. The clock's wake-up time is lost along with the power. This HP's BIOS also has no "power on when the charger connects" setting, and the chip setting that does this can't be changed while Secure Boot is on.
+
+  **With a new battery** (HP part TF03XL; check the number printed on your old one), it runs about 4 hours before reaching 40%, and then has many hours of checks left. Most cuts then cause no downtime at all. You can also let it run longer: put `SHUTDOWN_AT=25` in `/etc/default/power-guard` on the server.
 - **Your router needs power too.** During a cut the Jio router would go off as well, and your apps with it. Yours is on a mini UPS that lasts about 4.5 hours, longer than the usual cut.
 - **Battery health:** a battery kept full all the time ages faster, and old batteries can swell. If the laptop's case or touchpad starts to bulge, unplug it and replace the battery.
 - **Back up what GitHub can't:** your code is safe on GitHub, but each app's environment variables and database contents live only on the server. Keep the variables in a password manager. For databases with data you care about, Coolify can make scheduled backups (the database's **Backups** page) to S3 storage such as Cloudflare R2, which is free up to 10 GB. This isn't set up yet.
@@ -283,8 +287,8 @@ If no computer can connect any more (for example, you lost the only PC with a ke
 | "Permission denied (publickey)" | This computer's key isn't on the server | Section 5A |
 | The dashboard won't open | `ssh homeserver docker ps`: does `coolify` say "healthy"? | `ssh homeserver sudo reboot`, then wait 2 minutes |
 | Apps work at home but not on the internet | `ssh homeserver systemctl is-active cloudflared` | `ssh homeserver sudo systemctl restart cloudflared` |
-| Nothing works after a power cut | It switches itself on within 5 minutes of the power coming back, then needs about 2 minutes to start everything | Still off after 10 minutes (the battery ran flat)? Press the power button. If it happens again, see "Power cuts" in [section 6](#6-keep-it-healthy) |
-| The laptop switches itself off right after you switch it on | No charger, and the battery is below 15%: the power-cut protection at work | Plug in the charger, then switch it on |
+| Nothing works after a power cut | It switches itself on within 10 minutes of the power coming back, then needs about 2 minutes to start everything | Still off after 15 minutes? The battery ran completely flat: press the power button. `ssh homeserver journalctl -t power-guard` then shows how far it got (see "Power cuts" in [section 6](#6-keep-it-healthy)) |
+| The laptop switches itself off right after you switch it on | No charger, and the battery is below 40%: the power-cut protection at work | Plug in the charger, then switch it on |
 | A deploy fails | | [When a deploy doesn't work](#when-a-deploy-doesnt-work) |
 | `ssh homeserver` fails at home, but Tailscale works | The laptop's home address changed | Reserve the address in the router (section 6), or put the new address in `HostName` in `C:\Users\<you>\.ssh\config` |
 
@@ -364,7 +368,7 @@ ssh homeserver sudo reboot
 2. **One setup script**, `setup-server.sh`, that's safe to run again and makes a laptop behave like a cloud server. It:
    - installs all updates, including the ones Ubuntu holds back (new kernel, NVIDIA driver);
    - stops it sleeping with the lid closed, turns off Wi-Fi power saving, and checks that the Wi-Fi reconnects with nobody signed in;
-   - gets it through power cuts: it shuts down cleanly at 15% battery and switches itself back on once power returns (`power-guard`);
+   - gets it through power cuts: it shuts down cleanly at 40% battery and switches itself back on once power returns (`power-guard`);
    - makes SSH key-only, and adds fail2ban against password guessers;
    - sets up the firewall: home network and Tailscale in, internet out. That includes the ports Docker publishes, which normally slip past Ubuntu's firewall;
    - turns on daily security updates;
@@ -382,7 +386,8 @@ ssh homeserver sudo reboot
    - A push went live in under a minute.
    - Re-running the setup changed nothing.
    - After each reboot, everything came back by itself.
-   - A power cut, simulated with the charger unplugged: the server shut down, switched itself on every 2 minutes (for the test) and back off while the charger was out, and started normally once it was plugged in.
+   - A power cut, simulated with the charger unplugged: the server shut down, switched itself on every 2 minutes (for the test) and back off while the charger was out, and started normally once it was plugged in. It also wakes on time when the charger is plugged in while it's off.
+   - A real 4-hour run on battery, with the limit then at 15%, showed that a worn battery can't be run that low (see "Power cuts" in [section 6](#6-keep-it-healthy)), so the limit is now 40%.
 
 Test leftovers you can delete whenever you like: the Coolify project **samples** (sample-node, sample-vite, sample-db, autodeploy-ghapp), and the private GitHub repo **homeserver-autodeploy-test**.
 
