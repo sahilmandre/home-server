@@ -79,7 +79,7 @@ apt-get update -q
 # --with-new-pkgs also takes updates that need an extra package (a new kernel, a new driver), which a
 # plain upgrade holds back. Unlike full-upgrade it never removes anything.
 apt-get "${APT_OPTS[@]}" upgrade --with-new-pkgs
-apt-get "${APT_OPTS[@]}" install openssh-server curl ca-certificates git jq htop ufw fail2ban python3-systemd unattended-upgrades
+apt-get "${APT_OPTS[@]}" install openssh-server curl ca-certificates git jq htop btop ufw fail2ban python3-systemd unattended-upgrades
 
 step "Time zone and name"
 timedatectl set-timezone "$TIMEZONE"
@@ -109,6 +109,101 @@ EOF
 # (restarting logind would end the desktop session).
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null
 echo "Sleep and hibernate are disabled."
+
+# The battery covers short power cuts. In a long one, shut down cleanly instead of running until the
+# battery dies mid-write, and let the laptop's clock switch it back on to check whether power is back.
+if grep -qx Battery /sys/class/power_supply/*/type 2>/dev/null; then
+  step "Power cuts: shut down before the battery runs out, start again when power is back"
+  cat >/usr/local/sbin/power-guard <<'EOF'
+#!/bin/sh
+# Written by setup-server.sh. Gets the server through power cuts without anyone pressing a button:
+# on battery at SHUTDOWN_AT% or less, it sets the laptop's clock to switch it on in WAKE_EVERY
+# minutes and shuts down cleanly. Each time it starts it checks again: still no power, off for
+# another WAKE_EVERY minutes; power back, a normal start. To change the numbers, put them in
+# /etc/default/power-guard.
+#   power-guard status   is it on the charger, and how full is the battery
+SHUTDOWN_AT=25
+WAKE_EVERY=15
+# shellcheck source=/dev/null
+[ -r /etc/default/power-guard ] && . /etc/default/power-guard
+
+# The laptop's battery charge, in percent. (Batteries with scope Device are a mouse's or a phone's.)
+charge() {
+  for s in /sys/class/power_supply/*; do
+    [ "$(cat "$s/type" 2>/dev/null)" = Battery ] && [ "$(cat "$s/scope" 2>/dev/null)" != Device ] &&
+      cat "$s/capacity" 2>/dev/null && return
+  done
+}
+
+# True when the battery is all that powers the laptop.
+on_battery() {
+  discharging=0
+  for s in /sys/class/power_supply/*; do
+    [ "$(cat "$s/scope" 2>/dev/null)" = Device ] && continue
+    case "$(cat "$s/type" 2>/dev/null)" in
+      Mains | USB) [ "$(cat "$s/online" 2>/dev/null)" = 1 ] && return 1 ;;
+      Battery) [ "$(cat "$s/status" 2>/dev/null)" = Discharging ] && discharging=1 ;;
+    esac
+  done
+  [ "$discharging" = 1 ]
+}
+
+low() { on_battery && pct="$(charge)" && [ "$pct" -le "$SHUTDOWN_AT" ] 2>/dev/null; }
+
+off_for_now() {
+  echo "$1: shutting down, switching on again in $WAKE_EVERY minutes to check for power"
+  rtcwake -m no -s $((WAKE_EVERY * 60)) >/dev/null ||
+    echo "Couldn't set the wake-up time: once power is back, press the power button"
+  systemctl --no-block poweroff
+}
+
+case "$1" in
+  boot)
+    # Runs at every start, before the apps.
+    if low; then off_for_now "Still no power, battery at $pct%"; else rtcwake -m disable >/dev/null 2>&1; fi ;;
+  watch)
+    while sleep 60; do
+      if low; then off_for_now "Power cut, battery down to $pct%"; exit 0; fi
+    done ;;
+  status)
+    if on_battery; then
+      echo "On battery: $(charge)% left. At $SHUTDOWN_AT% it shuts down, then checks for power every $WAKE_EVERY minutes."
+    else
+      echo "On the charger. Battery: $(charge)%."
+    fi ;;
+  *) echo "Usage: power-guard status" >&2; exit 2 ;;
+esac
+EOF
+  chmod 755 /usr/local/sbin/power-guard
+  cat >/etc/systemd/system/power-guard.service <<'EOF'
+# Written by setup-server.sh: see /usr/local/sbin/power-guard.
+[Unit]
+Description=Shut down before the battery runs out, start again when power is back
+# The check at start finishes before the apps start, so a start during a power cut ends quickly.
+Before=docker.service
+
+[Service]
+ExecStartPre=/usr/local/sbin/power-guard boot
+ExecStart=/usr/local/sbin/power-guard watch
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  # A backstop if the battery gets this low anyway: UPower's default, hybrid sleep, is disabled
+  # above, so at critically low battery nothing would happen.
+  mkdir -p /etc/UPower/UPower.conf.d
+  cat >/etc/UPower/UPower.conf.d/server.conf <<'EOF'
+# Written by setup-server.sh.
+[UPower]
+CriticalPowerAction=PowerOff
+EOF
+  systemctl try-restart upower
+  systemctl daemon-reload
+  systemctl enable power-guard >/dev/null 2>&1
+  systemctl restart power-guard
+  /usr/local/sbin/power-guard status
+fi
 
 if command -v nmcli >/dev/null; then
   step "Wi-Fi: no power saving, connected at boot"
@@ -257,6 +352,17 @@ if (( INSTALL_COOLIFY )); then
       "update server_settings set wildcard_domain = 'http://$IP.sslip.io' where server_id = 0; update instance_settings set is_api_enabled = true;" ||
       warn "Couldn't preset Coolify's settings: set Servers → localhost → Wildcard Domain to http://$IP.sslip.io yourself."
   fi
+  # CPU and memory graphs for the server and each app (kept 7 days), off by default. Like the
+  # dashboard's switch: save the setting, then restart Sentinel, Coolify's monitoring agent.
+  if [[ "$(docker exec coolify-db psql -U coolify -d coolify -tAc "select is_metrics_enabled from server_settings where server_id = 0" 2>/dev/null)" == f ]]; then
+    docker exec coolify php artisan tinker --execute '
+      $server = App\Models\Server::find(0);
+      $server->settings->is_metrics_enabled = true;
+      $server->settings->save();
+      App\Actions\Server\StartSentinel::run($server->refresh(), true);' >/dev/null 2>&1 ||
+      warn "Couldn't turn on Coolify's graphs: Servers → localhost → Metrics."
+  fi
+  echo "CPU and memory graphs: Servers → localhost → Metrics, and each app's Metrics."
   getent group docker >/dev/null && usermod -aG docker "$ADMIN_USER"
 fi
 

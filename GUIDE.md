@@ -82,6 +82,15 @@ Handy commands, after `ssh homeserver`:
 | Restart the server | `sudo reboot` (it's back in about a minute) |
 | Install updates now | `sudo apt update && sudo apt upgrade -y` |
 
+### See how busy it is (memory, CPU, disk, power)
+
+- **Graphs, in the dashboard:** **Servers** → **localhost** → **Metrics** shows the server's CPU and memory use, for up to the last 7 days. Each app has its own: the app → **Metrics**.
+- **Live, everything on one screen:** `ssh -t homeserver btop`. It shows each CPU core, memory, disk, network, temperatures, the battery, and which programs use the most. Press `q` to leave.
+- **Memory per app:** after `ssh homeserver`, type `docker stats` (Ctrl+C to leave). Apps are listed by their Coolify ID: the last code in the app's address when you open it in the dashboard.
+- **Power:** `ssh homeserver power-guard status` says whether it's on the charger and how full the battery is.
+
+For scale: Coolify itself and the current apps use about 2 GB of the 7 GB of memory, which leaves room for several more apps. Each time job-mailer runs a browser, it briefly uses a few hundred MB more. The laptop draws about 10 watts, which comes to roughly 7 units (kWh) of electricity a month.
+
 ### Edit files on the server with VS Code
 
 1. In VS Code, open **Extensions** and install **Remote - SSH** (by Microsoft).
@@ -253,7 +262,14 @@ If no computer can connect any more (for example, you lost the only PC with a ke
   Re-running the setup is always safe: it installs updates and re-checks every setting.
 - **Coolify** updates itself.
 - **Disk space:** check with `ssh homeserver df -h /`. Every deploy keeps a copy of the app's image. If free space drops below about 20 GB, `ssh homeserver docker image prune -a -f` removes the images no app is using; running apps are not affected.
-- **BIOS:** turn on "Restore on AC power loss" (or "Power on after AC loss") if your laptop has it, so the server starts by itself after a long power cut.
+- **Power cuts** are handled by themselves, in three stages:
+  1. The battery keeps the server running. This battery is worn: it holds about 15 Wh where a new one holds 41 Wh, so that's roughly an hour. A new battery (HP part TF03XL) would make it about three times longer.
+  2. At 25% the server shuts down cleanly, rather than running until the battery dies in the middle of writing something.
+  3. Every 15 minutes, the laptop's clock switches it on to check for power. If the charger is still dead, it switches off again within about 35 seconds. Once power is back, it starts normally. Your apps are back at most about 15 minutes after the power is.
+
+  The remaining 25% lasts several hours of these checks. If a cut lasts even longer and the battery runs flat, press the power button once power is back. (This HP's BIOS has no "power on when the charger connects" setting, so the clock does that job.) To see what happened during a cut: `ssh homeserver journalctl -t power-guard`.
+- **Your router needs power too.** During a cut the Jio router goes off as well, so your apps are offline even while the laptop runs, unless the router is on an inverter. A small "mini UPS for router" keeps the internet up for hours.
+- **Battery health:** a battery kept full all the time ages faster, and old batteries can swell. If the laptop's case or touchpad starts to bulge, unplug it and replace the battery.
 - **Back up what GitHub can't:** your code is safe on GitHub, but each app's environment variables and database contents live only on the server. Keep the variables in a password manager. For databases with data you care about, Coolify can make scheduled backups (the database's **Backups** page) to S3 storage such as Cloudflare R2, which is free up to 10 GB. This isn't set up yet.
 
 ## 7. When something goes wrong
@@ -265,7 +281,8 @@ If no computer can connect any more (for example, you lost the only PC with a ke
 | "Permission denied (publickey)" | This computer's key isn't on the server | Section 5A |
 | The dashboard won't open | `ssh homeserver docker ps`: does `coolify` say "healthy"? | `ssh homeserver sudo reboot`, then wait 2 minutes |
 | Apps work at home but not on the internet | `ssh homeserver systemctl is-active cloudflared` | `ssh homeserver sudo systemctl restart cloudflared` |
-| Nothing works after a power cut | The laptop may still be off | Switch it on. Everything starts by itself within about 2 minutes |
+| Nothing works after a power cut | It switches itself on within 15 minutes of the power coming back, then needs about 2 minutes to start everything | Still off after 20 minutes (the battery ran flat in a very long cut)? Press the power button |
+| The laptop switches itself off right after you switch it on | No charger, and the battery is below 25%: the power-cut protection at work | Plug in the charger, then switch it on |
 | A deploy fails | | [When a deploy doesn't work](#when-a-deploy-doesnt-work) |
 | `ssh homeserver` fails at home, but Tailscale works | The laptop's home address changed | Reserve the address in the router (section 6), or put the new address in `HostName` in `C:\Users\<you>\.ssh\config` |
 
@@ -345,10 +362,11 @@ ssh homeserver sudo reboot
 2. **One setup script**, `setup-server.sh`, that's safe to run again and makes a laptop behave like a cloud server. It:
    - installs all updates, including the ones Ubuntu holds back (new kernel, NVIDIA driver);
    - stops it sleeping with the lid closed, turns off Wi-Fi power saving, and checks that the Wi-Fi reconnects with nobody signed in;
+   - gets it through power cuts: it shuts down cleanly at 25% battery and switches itself back on once power returns (`power-guard`);
    - makes SSH key-only, and adds fail2ban against password guessers;
    - sets up the firewall: home network and Tailscale in, internet out. That includes the ports Docker publishes, which normally slip past Ubuntu's firewall;
    - turns on daily security updates;
-   - installs Tailscale, Coolify (with your admin account created during the install) and the Cloudflare Tunnel.
+   - installs Tailscale, Coolify (with your admin account created during the install, and its CPU and memory graphs on) and the Cloudflare Tunnel.
 3. **The domain:** tradelogy.in's DNS moved from Hostinger to Cloudflare (Hostinger still holds the registration). One DNS record, `*.tradelogy.in`, sends every subdomain without a record of its own to the tunnel. Your Tradelogy site at `tradelogy.in` and `www` is untouched.
 4. **Problems that testing found, and their fixes:**
    - Apps saw every visitor as plain `http` coming from a Docker address. That breaks logins, cookies and `https://` redirects. Now the proxy trusts the tunnel's forwarded headers.
@@ -362,6 +380,7 @@ ssh homeserver sudo reboot
    - A push went live in under a minute.
    - Re-running the setup changed nothing.
    - After each reboot, everything came back by itself.
+   - A power cut, simulated with the charger unplugged: the server shut down, switched itself on every 2 minutes (for the test) and back off while the charger was out, and started normally once it was plugged in.
 
 Test leftovers you can delete whenever you like: the Coolify project **samples** (sample-node, sample-vite, sample-db, autodeploy-ghapp), and the private GitHub repo **homeserver-autodeploy-test**.
 

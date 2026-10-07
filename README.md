@@ -6,7 +6,7 @@ Manage it over SSH (`ssh homeserver`) and host apps straight from your Git repos
 
 | File | Runs on | What it does |
 |---|---|---|
-| `setup-server.sh` | the Ubuntu laptop | updates the system, keeps the laptop awake with the lid closed and the Wi-Fi up, sets up the firewall, fail2ban and automatic security updates, installs Coolify (and Docker), switches SSH to keys only once your key is on the laptop, and with `--domain` puts your apps on the internet through a Cloudflare Tunnel |
+| `setup-server.sh` | the Ubuntu laptop | updates the system, keeps the laptop awake with the lid closed and the Wi-Fi up, gets it through power cuts (clean shutdown on low battery, back on by itself when power returns), sets up the firewall, fail2ban and automatic security updates, installs Coolify (and Docker), switches SSH to keys only once your key is on the laptop, and with `--domain` puts your apps on the internet through a Cloudflare Tunnel |
 | `connect.ps1` | each Windows PC you manage it from, once | creates an SSH key, copies it to the laptop, gives your Ubuntu user password-free `sudo` (like a cloud VPS), adds the `ssh homeserver` shortcut |
 
 ## Who can reach the server
@@ -105,6 +105,18 @@ GitHub tells Coolify about each push through `https://hooks.example.com`. That a
 
 GitHub's **Recent Deliveries** tab (on the webhook or the GitHub App's settings) shows each push it sent and Coolify's answer, which is the first place to look if a push doesn't deploy.
 
+## How busy is it
+
+- **Graphs:** in Coolify, **Servers → localhost → Metrics** (CPU and memory, last 7 days), and each app's **Metrics**. The setup turns these on.
+- **Live:** `ssh -t homeserver btop` (`q` to leave); memory per app: `ssh homeserver docker stats --no-stream`.
+- **Power:** `ssh homeserver power-guard status` (charger or battery, and the charge).
+
+## Power cuts
+
+The battery keeps the server running at first. At 25% it shuts down cleanly and sets the laptop's clock to switch it on 15 minutes later. Each time it starts, it checks: still no charger, off for another 15 minutes; power back, a normal start. So it's back by itself within about 15 minutes of the power, as long as the battery doesn't run flat first. Change the numbers in `/etc/default/power-guard` (`SHUTDOWN_AT=25`, `WAKE_EVERY=15`); see what happened with `journalctl -t power-guard`.
+
+It relies on the laptop's clock alarm being able to switch it on (the RTC alarm, which `rtcwake` sets). Most laptops support this; check yours once with the charger plugged in. `sudo rtcwake -m no -s 120 && sudo systemctl poweroff` should switch it back on after two minutes. If your BIOS has a "power on when AC is connected" setting, turn that on too.
+
 ## Reaching it from outside your home
 
 - **SSH and the dashboard from anywhere: Tailscale.** A private network between your devices. With Tailscale on your phone or PC, use the laptop's Tailscale name: `ssh <user>@<hostname>`, `http://<hostname>:8000`. No open ports.
@@ -114,9 +126,8 @@ Both are set up by the script over SSH; you only approve a sign-in link in your 
 
 ## Differences from a real VPS
 
-- If your power or internet goes down, so do your apps. The battery covers short power cuts; keep the charger plugged in.
+- If your power or internet goes down, so do your apps. The battery covers short power cuts, but the router usually doesn't: put it on an inverter or a mini UPS. Keep the charger plugged in.
 - Home upload speed limits how fast your sites serve.
-- In the BIOS, turn on *"Power on after AC loss"* / *"Restore on AC power"*, if available, so it comes back by itself after a long outage.
 - Keep the laptop somewhere ventilated, lid closed or open.
 - Every device on your home network can reach every port on the server. Fine at home; don't connect it to a network you don't trust.
 
@@ -125,5 +136,6 @@ Both are set up by the script over SSH; you only approve a sign-in link in your 
 - Allow password sign-in again: `sudo rm /etc/ssh/sshd_config.d/01-server.conf && sudo systemctl reload ssh`
 - Get the desktop back after `--headless`: `sudo systemctl set-default graphical.target`
 - Allow sleep again: `sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target && sudo rm /etc/systemd/logind.conf.d/10-server.conf`
+- Turn off the power-cut shutdown: `sudo systemctl disable --now power-guard`
 - Wi-Fi power saving back on: `sudo rm /etc/NetworkManager/conf.d/server-wifi-powersave-off.conf` (applies after a reboot)
 - Take the apps off the internet: `sudo systemctl disable --now cloudflared`, then delete the `*` record on Cloudflare's DNS page.
