@@ -122,8 +122,10 @@ if grep -qx Battery /sys/class/power_supply/*/type 2>/dev/null; then
 # another WAKE_EVERY minutes; power back, a normal start. To change the numbers, put them in
 # /etc/default/power-guard.
 #   power-guard status   is it on the charger, and how full is the battery
-SHUTDOWN_AT=25
-WAKE_EVERY=15
+# For a router on a UPS and cuts of an hour or two: run as long as is safe, and be back within
+# minutes. For longer cuts, a higher SHUTDOWN_AT leaves more charge for the checks.
+SHUTDOWN_AT=15
+WAKE_EVERY=5
 # shellcheck source=/dev/null
 [ -r /etc/default/power-guard ] && . /etc/default/power-guard
 

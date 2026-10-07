@@ -113,7 +113,7 @@ GitHub's **Recent Deliveries** tab (on the webhook or the GitHub App's settings)
 
 ## Power cuts
 
-The battery keeps the server running at first. At 25% it shuts down cleanly and sets the laptop's clock to switch it on 15 minutes later. Each time it starts, it checks: still no charger, off for another 15 minutes; power back, a normal start. So it's back by itself within about 15 minutes of the power, as long as the battery doesn't run flat first. Change the numbers in `/etc/default/power-guard` (`SHUTDOWN_AT=25`, `WAKE_EVERY=15`); see what happened with `journalctl -t power-guard`.
+The battery keeps the server running at first. At 15% it shuts down cleanly and sets the laptop's clock to switch it on 5 minutes later. Each time it starts, it checks: still no charger, off for another 5 minutes; power back, a normal start. So it's back by itself within about 5 minutes of the power, as long as the battery doesn't run flat first. To change the numbers, put them in `/etc/default/power-guard` (`SHUTDOWN_AT=15`, `WAKE_EVERY=5`). They suit a router on a UPS and cuts of an hour or two; for longer cuts, a higher `SHUTDOWN_AT` leaves more charge for the checks. See what happened with `journalctl -t power-guard`.
 
 It relies on the laptop's clock alarm being able to switch it on (the RTC alarm, which `rtcwake` sets). Most laptops support this; check yours once with the charger plugged in. `sudo rtcwake -m no -s 120 && sudo systemctl poweroff` should switch it back on after two minutes. If your BIOS has a "power on when AC is connected" setting, turn that on too.
 
