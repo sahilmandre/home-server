@@ -4,6 +4,8 @@ Everything about your home server in one place: what it is, how to use it, how t
 
 > This repo is public, so the guide contains no passwords or keys. It tells you where they're kept.
 
+> **Just need the steps?** [EASY-GUIDE.md](EASY-GUIDE.md) has every everyday task as a short recipe. This guide has the details and the reasons.
+
 **Contents**
 
 1. [Your setup at a glance](#1-your-setup-at-a-glance)
@@ -23,10 +25,11 @@ Everything about your home server in one place: what it is, how to use it, how t
 |---|---|
 | The server | The spare Ubuntu laptop, named **samserver**. Your user on it: **sam** |
 | Its home network address | `192.168.29.66` (keep it fixed, see [section 6](#6-keep-it-healthy)) |
-| Its Tailscale address | `100.103.7.25` (reachable from anywhere, once Tailscale is on your device) |
-| SSH from this PC | `ssh homeserver` |
-| Coolify dashboard | `http://192.168.29.66:8000` at home, `http://100.103.7.25:8000` through Tailscale |
-| Coolify sign-in | `sahilmandre@gmail.com`; the first password is shown by `ssh homeserver sudo cat /root/coolify-admin.txt` (change it, then delete that file) |
+| Its Tailscale address | `100.103.7.25`, or just the name `samserver` (reachable from anywhere, once Tailscale is on your device) |
+| SSH | `ssh homeserver`. On the office laptop that shortcut is the home address, so it works at home only. On the Honor laptop it's the Tailscale address, so it works anywhere with Tailscale on |
+| Coolify dashboard | `http://192.168.29.66:8000` at home; `http://samserver:8000` (or `http://100.103.7.25:8000`) from anywhere with Tailscale on |
+| Coolify sign-in | `sahilmandre@gmail.com`, your password and the 6-digit code from your phone's authenticator app (2FA). Password and recovery codes: in your password manager. Forgot them? See [section 7](#forgot-the-coolify-password-or-lost-your-2fa-phone) |
+| Your devices | **Honor laptop:** dashboard and SSH, from anywhere. **Office laptop:** dashboard and SSH, at home only (no Tailscale). **Phone:** dashboard, from anywhere |
 | Your apps on the internet | `https://<name>.tradelogy.in` |
 | Deploy on `git push` | GitHub App **job-mailer** (covers all your repos), webhooks arrive at `hooks.tradelogy.in` |
 | Domain | `tradelogy.in`: bought at Hostinger, DNS run by Cloudflare. `tradelogy.in` and `www` are your Tradelogy site, which lives elsewhere and isn't touched by this server |
@@ -35,7 +38,7 @@ Everything about your home server in one place: what it is, how to use it, how t
 Who can reach what:
 
 - **Your home Wi-Fi and your Tailscale devices:** everything (SSH, the dashboard, your apps).
-- **The internet:** only your apps, at `https://<name>.tradelogy.in`. Nothing is open on your router or the laptop.
+- **The internet:** only your apps, at `https://<name>.tradelogy.in`. Nothing is open on your router or the laptop. The dashboard is kept off the internet on purpose ([why](#9-what-we-built-and-why)).
 
 ## 2. How it fits together
 
@@ -59,7 +62,9 @@ The pieces, one line each:
 
 ### Open the dashboard
 
-In a browser: `http://192.168.29.66:8000` at home, or `http://100.103.7.25:8000` from anywhere with Tailscale on.
+In a browser: `http://192.168.29.66:8000` at home, or `http://samserver:8000` (the same as `http://100.103.7.25:8000`) from anywhere with Tailscale on. Type the `http://` yourself. Sign in with your email, password, and the 6-digit code from your authenticator app.
+
+The browser calls the page "Not secure" because it's `http`. That's fine: at home it never leaves your Wi-Fi, and through Tailscale everything is encrypted anyway.
 
 ### Run commands on the server (SSH)
 
@@ -81,6 +86,8 @@ Handy commands, after `ssh homeserver`:
 | Check the public tunnel | `systemctl status cloudflared` (press `q` to leave) |
 | Restart the server | `sudo reboot` (it's back in about a minute) |
 | Install updates now | `sudo apt update && sudo apt upgrade -y` |
+
+**After `sudo reboot`:** the server is back in about a minute (measured: off at 0:11 seconds, Coolify running again at 0:46). But the SSH window you typed it in doesn't close: it freezes, and stays frozen for up to 2 minutes, so it looks as if the server never came back. Close that window (or press Enter, then type `~.`), wait a minute, and run `ssh homeserver` in a new one. In the browser, reload the dashboard.
 
 ### See how busy it is (memory, CPU, disk, power)
 
@@ -180,7 +187,9 @@ Every deploy starts the app from a fresh copy, so anything it saved in its own f
 
 ## 5. Connect from another computer
 
-How access works: SSH on the server doesn't accept passwords, only keys. A key is a pair of files made on your computer: a private one that never leaves it, and a public one that you give the server. Each computer gets its own key, added once.
+How access works: SSH on the server doesn't accept passwords, only keys. A key is a pair of files made on your computer: a private one that never leaves it, and a public one that you give the server. Each computer gets its own key, added once. Today two have one: the office laptop and the Honor laptop.
+
+**Personal laptop: use B (Tailscale), even at home.** Its `ssh homeserver` then works the same in every city. A is for a computer that can't run Tailscale, like the office laptop.
 
 ### A. Another Windows laptop, at home
 
@@ -195,11 +204,19 @@ How access works: SSH on the server doesn't accept passwords, only keys. A key i
 
 ### B. Away from home (Tailscale)
 
-Tailscale joins your devices into one private network, wherever each of them is.
+Tailscale joins your devices into one private network, wherever each of them is. This is how the Honor laptop was set up (26 November).
 
-1. Install Tailscale on the laptop (<https://tailscale.com/download>) and sign in with **the same account as the server**. You should see **samserver** in the Tailscale app, or at <https://login.tailscale.com/admin/machines>.
-2. Test it: open `http://100.103.7.25:8000`. The Coolify dashboard should appear.
-3. For SSH, run `connect.ps1` as in section A, with `-HostAddress 100.103.7.25`. That shortcut then works at home and away, as long as Tailscale is on.
+1. Install Tailscale on the laptop (<https://tailscale.com/download>) and sign in with **the same account as the server** (`sahilmandre@`). If Tailscale is already installed but hasn't been used for months, install the latest version over it first: an old one may say "Connected" without really connecting.
+2. Check it: at <https://login.tailscale.com/admin/machines>, both **samserver** and this laptop should be listed as connected.
+3. Test it: open `http://100.103.7.25:8000`. The Coolify dashboard should appear. If it doesn't, see [If Tailscale is on but nothing opens](#if-tailscale-is-on-but-nothing-opens).
+4. For SSH: get this repo (section A, step 1), open PowerShell in its folder, and run:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\connect.ps1 -HostAddress 100.103.7.25 -User sam
+   ```
+5. It makes a key, then says "Couldn't sign in" in red. That's expected. It prints a line starting with `echo 'ssh-ed25519 ...`. Run that line on a computer that already connects:
+   - **the Honor laptop**, with Tailscale on, from anywhere: run the line as printed;
+   - **the office laptop**, at home only: run the line as printed.
+6. Back on the new laptop, run the command from step 4 again. It ends with a green "Connected". `ssh homeserver` now works there, at home and away, as long as Tailscale is on.
 
    If the laptop already has a `homeserver` shortcut for the home address, add a second one instead. Open `C:\Users\<you>\.ssh\config` in Notepad and add at the end:
    ```
@@ -212,6 +229,20 @@ Tailscale joins your devices into one private network, wherever each of them is.
    Then use `ssh homeserver-ts` when you're away.
 
 Company laptops may not be allowed to run Tailscale. Without it, away from home they can only open your public apps.
+
+**Away from home, the home address leads somewhere else.** Most Jio routers hand out the same `192.168.29.x` addresses, so on a Jio Wi-Fi in another city, `192.168.29.66` is some other home's device, or nothing at all. A shortcut with the home address (like the office laptop's `ssh homeserver`) then times out. Or it warns "REMOTE HOST IDENTIFICATION HAS CHANGED": that's a stranger's computer, so answer **no**. Away from home, only the Tailscale address reaches your server.
+
+### If Tailscale is on but nothing opens
+
+"This site can't be reached", or `ssh homeserver` times out, while Tailscale says it's on. Go down this list:
+
+1. **Is this device really connected?** Open <https://login.tailscale.com/admin/machines>. If this device shows as offline there, its Tailscale isn't really connected, whatever the app says.
+2. **Reconnect.** Click the Tailscale icon near the clock (it may be under the **^** arrow), click **Disconnect**, then **Connect**. If it asks you to log in, log in.
+3. **Update it.** Install the latest version from <https://tailscale.com/download> over the old one. Your sign-in is kept. (This fixed the Honor laptop, whose Tailscale hadn't been used since July.)
+4. **Switch off other VPNs:** Cloudflare WARP, an office VPN, free VPN apps. Two VPNs on one device often block each other.
+5. **Test** in PowerShell: `tailscale status` should list samserver, and `ping 100.103.7.25` should get replies. If so, open `http://100.103.7.25:8000`.
+6. **The number works but `samserver` doesn't:** Tailscale icon → **Preferences** → turn on **Use Tailscale DNS settings**.
+7. **samserver shows as offline** on the machines page: the server is off, or its Tailscale has stopped. That needs someone at the server: check it has power, and if it does, open a terminal on it (Ctrl+Alt+T) and run `sudo tailscale up`.
 
 ### C. A Mac or Linux laptop
 
@@ -234,6 +265,14 @@ Then add the `Host` block from section B to `~/.ssh/config` on the Mac, with `Ho
 
 - **Dashboard:** install the Tailscale app, sign in with the same account, then open `http://100.103.7.25:8000` in the browser.
 - **SSH:** use an app such as Termius. Create a key in the app, add its public key with the `echo` line from section C, and connect to `100.103.7.25` as user `sam`.
+
+### Lost a laptop, or stopped using one?
+
+Take its access away, from another laptop that connects:
+
+1. At <https://login.tailscale.com/admin/machines>: click **⋯** next to it → **Remove**.
+2. See which keys the server accepts: `ssh homeserver ssh-keygen -lf .ssh/authorized_keys`. Each line ends with the computer's name, like `sahil@SAHIL to homeserver` for the Honor laptop.
+3. Remove that computer's key: `ssh -t homeserver nano .ssh/authorized_keys`. Move to its line with the arrow keys, press **Ctrl+K** to delete the line, then **Ctrl+O**, **Enter** to save and **Ctrl+X** to leave. Be careful not to delete the line of the laptop you're using.
 
 ### Locked out?
 
@@ -261,6 +300,7 @@ If no computer can connect any more (for example, you lost the only PC with a ke
   ```
   Re-running the setup is always safe: it installs updates and re-checks every setting.
 - **Coolify** updates itself.
+- **Tailscale key expiry is off for samserver** (turned off on 26 November). Tailscale signs every device out after 180 days unless you turn this off. For the server, that would mean no access from outside home until someone at the laptop signs it in again (it was due on 6 January 2027). After a rebuild, turn it off again: <https://login.tailscale.com/admin/machines> → **⋯** next to samserver → **Disable key expiry**. Your phone and laptops can keep expiry on: when theirs runs out, the app just asks you to sign in again.
 - **Disk space:** check with `ssh homeserver df -h /`. Every deploy keeps a copy of the app's image. If free space drops below about 20 GB, `ssh homeserver docker image prune -a -f` removes the images no app is using; running apps are not affected.
 - **Power cuts** are handled by themselves, in three stages:
   1. The battery keeps the server running. This battery is worn: it holds about 15 Wh where a new one holds 41 Wh, so it reaches 40% after about 1¼ hours.
@@ -283,14 +323,43 @@ If no computer can connect any more (for example, you lost the only PC with a ke
 | Problem | Check | Fix |
 |---|---|---|
 | `ssh homeserver` hangs or times out | Is the laptop on? Are you on the home Wi-Fi? Is a company VPN connected? | Disconnect the VPN, or use Tailscale (section 5B). Check the laptop has power |
+| `ssh homeserver` times out away from home | Does this laptop's shortcut use the home address (`192.168.29.66`)? | That only works at home ([why](#b-away-from-home-tailscale)). Use Tailscale and its address `100.103.7.25` |
+| Tailscale is on, but "This site can't be reached" | <https://login.tailscale.com/admin/machines>: are this device and samserver connected? | [If Tailscale is on but nothing opens](#if-tailscale-is-on-but-nothing-opens) |
+| The SSH window froze after `sudo reboot` | Normal: it doesn't notice the server went away | Close it, wait a minute, open a new one ([details](#3-everyday-use)) |
+| Forgot the Coolify password, or lost the 2FA phone | | [See below](#forgot-the-coolify-password-or-lost-your-2fa-phone) |
 | "REMOTE HOST IDENTIFICATION HAS CHANGED" | The server was reinstalled | `ssh-keygen -R 192.168.29.66` (and `ssh-keygen -R 100.103.7.25`), then connect again |
 | "Permission denied (publickey)" | This computer's key isn't on the server | Section 5A |
 | The dashboard won't open | `ssh homeserver docker ps`: does `coolify` say "healthy"? | `ssh homeserver sudo reboot`, then wait 2 minutes |
 | Apps work at home but not on the internet | `ssh homeserver systemctl is-active cloudflared` | `ssh homeserver sudo systemctl restart cloudflared` |
+| Every `https://` app says "redirected you too many times" (`ERR_TOO_MANY_REDIRECTS`), or never finishes loading | The proxy lost its "trust the tunnel" setting ([what happened on 26 November](#9-what-we-built-and-why)) | Re-run the setup: `ssh -t homeserver "cd ~/home-server && git pull && sudo bash setup-server.sh --tailscale --domain tradelogy.in"`. It puts the setting back |
 | Nothing works after a power cut | It switches itself on within 10 minutes of the power coming back, then needs about 2 minutes to start everything | Still off after 15 minutes? The battery ran completely flat: press the power button. `ssh homeserver journalctl -t power-guard` then shows how far it got (see "Power cuts" in [section 6](#6-keep-it-healthy)) |
 | The laptop switches itself off right after you switch it on | No charger, and the battery is below 40%: the power-cut protection at work | Plug in the charger, then switch it on |
 | A deploy fails | | [When a deploy doesn't work](#when-a-deploy-doesnt-work) |
 | `ssh homeserver` fails at home, but Tailscale works | The laptop's home address changed | Reserve the address in the router (section 6), or put the new address in `HostName` in `C:\Users\<you>\.ssh\config` |
+
+### Forgot the Coolify password, or lost your 2FA phone
+
+There's no "Forgot password?" email: Coolify can only send one if email sending is set up, and it isn't on this server. Reset it from a laptop that has SSH (the Honor laptop with Tailscale on, or the office laptop at home).
+
+**Forgot the password.** In PowerShell:
+
+```powershell
+ssh -t homeserver "sudo docker exec -ti coolify php artisan root:reset-password"
+```
+
+It asks "Give me a new password for root user", then "Again". Nothing appears while you type, which is normal. Then sign in with the new password (2FA stays on) and save it in your password manager.
+
+**Lost the phone with the authenticator app.** On the sign-in page, enter one of the recovery codes Coolify showed when you turned on 2FA, instead of the 6-digit code. No recovery codes either? Turn 2FA off from a laptop with SSH:
+
+1. Run `ssh homeserver`, then on the server: `sudo docker exec -it coolify php artisan tinker`
+2. At its `>` prompt, paste this line and press Enter. It answers `true`:
+   ```php
+   App\Models\User::find(0)->forceFill(['two_factor_secret' => null, 'two_factor_recovery_codes' => null, 'two_factor_confirmed_at' => null])->save();
+   ```
+3. Type `exit` twice.
+4. Sign in with just the password, then turn 2FA on again in your **Profile**, with the new phone. Save the new recovery codes in your password manager.
+
+(User 0 is the admin account, `sahilmandre@gmail.com`. Both commands only change that account.)
 
 ## 8. Rebuild from scratch
 
@@ -320,7 +389,7 @@ sudo bash setup-server.sh --tailscale --admin-email sahilmandre@gmail.com
 
 It takes 10 to 20 minutes. When it's done:
 
-1. **Tailscale:** first remove the old **samserver** at <https://login.tailscale.com/admin/machines>, so the new laptop gets the same name. Then run `sudo tailscale up`, open the link it prints and sign in. Note the new Tailscale address (`tailscale ip -4`); it replaces `100.103.7.25` everywhere in this guide.
+1. **Tailscale:** first remove the old **samserver** at <https://login.tailscale.com/admin/machines>, so the new laptop gets the same name. Then run `sudo tailscale up`, open the link it prints and sign in. Back on the machines page, click **⋯** next to the new samserver → **Disable key expiry** ([why](#6-keep-it-healthy)). Note the new Tailscale address (`tailscale ip -4`); it replaces `100.103.7.25` everywhere in this guide. On the Honor laptop, put it in `HostName` in `C:\Users\<you>\.ssh\config`, and run `ssh-keygen -R 100.103.7.25` there.
 2. **Home address:** run `hostname -I`. The first address is the laptop's home address. If it isn't `192.168.29.66`, use the new one below and in your router reservation.
 
 ### Step 3: Connect your PC
@@ -348,7 +417,7 @@ ssh homeserver sudo reboot
 
 ### Step 5: Set up Coolify again
 
-1. **Sign in** at `http://192.168.29.66:8000` with the email and password from `ssh homeserver sudo cat /root/coolify-admin.txt`. Change the password in your profile, then delete the file: `ssh homeserver sudo rm /root/coolify-admin.txt`.
+1. **Sign in** at `http://192.168.29.66:8000` with the email and password from `ssh homeserver sudo cat /root/coolify-admin.txt`. In your **Profile**, change the password and turn on 2FA. Save the password and the recovery codes in your password manager, then delete the file: `ssh homeserver sudo rm /root/coolify-admin.txt`.
 2. **GitHub App:** the old app's keys were on the old server, so make a new one. On GitHub: **Settings → Developer settings → GitHub Apps → job-mailer → Edit → Advanced → Delete GitHub App**. Then follow [README → Deploy automatically on git push](README.md#deploy-automatically-on-git-push), all six steps.
 3. **Apps:** add each one again with [section 4](#4-deploy-an-app), pasting its environment variables from your password manager. Create the databases again, and restore their backups if you have them.
 
@@ -380,7 +449,9 @@ ssh homeserver sudo reboot
    - Coolify's API was off, and the API can't set the default app domain. The script now sets both on a fresh install.
    - Setting Coolify's "Instance's Domain" would have locked the dashboard to that one name. It's left empty; instead, webhooks get their own address, `hooks.tradelogy.in`, which only lets `/webhooks/...` through.
    - GitHub App registration only finishes when GitHub returns your browser to the address where you're signed in. So you register with the dashboard address, then point the webhook at `hooks.tradelogy.in`.
-5. **What was tested:**
+   - **26 November: all apps stopped loading after "Restart Proxy" was clicked in the dashboard.** Coolify keeps its own copy of the proxy settings in its database, and writes that copy back whenever the proxy is restarted from the dashboard. The setup had only changed the file, so the "trust the tunnel" setting disappeared and every `https://` app redirected to itself forever. The fix: the settings are now also saved in Coolify's copy (the setup script does this too). A dashboard restart was tested afterwards and keeps them. **Restart Proxy is safe to click now.**
+5. **The dashboard stays private** (decided on 26 November). It could live at `https://coolify.tradelogy.in`, through the tunnel, behind a Cloudflare Access login. Then any browser could open it without Tailscale. We chose not to, because whoever gets into Coolify controls the whole server and every app's passwords, and serious security holes have been found in Coolify before. Tailscale already gives the phone and the Honor laptop access from anywhere. If it's ever needed: set up the Cloudflare Access login first, then the tunnel route, and keep Coolify's Instance's Domain empty.
+6. **What was tested:**
    - A simulated internet computer couldn't reach any port, over IPv4 or IPv6, while home addresses could.
    - Apps deployed from GitHub and opened over HTTPS from outside.
    - A push went live in under a minute.

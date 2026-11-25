@@ -2,7 +2,7 @@
 
 Manage it over SSH (`ssh homeserver`) and host apps straight from your Git repos with **Coolify**, just like a cloud VPS (Oracle, AWS, DigitalOcean...).
 
-**New to this? Read [GUIDE.md](GUIDE.md):** a step-by-step guide to deploying apps, connecting from other computers (at home and away) and rebuilding everything from scratch. This README is the short reference.
+**New to this? Read [GUIDE.md](GUIDE.md):** a step-by-step guide to deploying apps, connecting from other computers (at home and away) and rebuilding everything from scratch. **[EASY-GUIDE.md](EASY-GUIDE.md)** has the everyday tasks as short recipes. This README is the short reference.
 
 | File | Runs on | What it does |
 |---|---|---|
@@ -121,7 +121,7 @@ It relies on the laptop's clock alarm being able to switch it on (the RTC alarm,
 
 ## Reaching it from outside your home
 
-- **SSH and the dashboard from anywhere: Tailscale.** A private network between your devices. With Tailscale on your phone or PC, use the laptop's Tailscale name: `ssh <user>@<hostname>`, `http://<hostname>:8000`. No open ports.
+- **SSH and the dashboard from anywhere: Tailscale.** A private network between your devices. With Tailscale on your phone or PC, use the laptop's Tailscale name: `ssh <user>@<hostname>`, `http://<hostname>:8000`. No open ports. In the [Tailscale admin console](https://login.tailscale.com/admin/machines), turn off **key expiry** for the server (**⋯ → Disable key expiry**). Otherwise Tailscale signs it out after 180 days, and only someone at the laptop can sign it back in.
 - **Public websites: Cloudflare Tunnel** (`--domain`, [above](#put-your-apps-on-the-internet-with-your-own-domain)). Works even if your ISP gives you no public IP (common with Jio and Airtel fibre).
 
 Both are set up by the script over SSH; you only approve a sign-in link in your browser.
