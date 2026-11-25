@@ -458,6 +458,15 @@ EOF
         warn "Couldn't add forwardedHeaders.trustedIPs to $PROXY: apps may see http instead of https."
       fi
     fi
+    # Coolify keeps its own copy of that file in its database and writes the copy back whenever the
+    # proxy is restarted from the dashboard, so the lines must be in the copy too. (On 2026-11-26 a
+    # dashboard "Restart Proxy" dropped them, and every https:// app redirected forever.)
+    if [[ -f "$PROXY" ]] && grep -q 'forwardedHeaders.trustedIPs' "$PROXY"; then
+      b64="$(base64 -w0 "$PROXY")"
+      saved="$(docker exec coolify php artisan tinker --execute="\$s = App\Models\Server::find(0); if (! str_contains((string) \$s->proxy->get('last_saved_proxy_configuration'), 'forwardedHeaders.trustedIPs')) { App\Actions\Proxy\SaveProxyConfiguration::run(\$s, base64_decode('$b64')); \$s->refresh(); } echo str_contains((string) \$s->proxy->get('last_saved_proxy_configuration'), 'forwardedHeaders.trustedIPs') ? 'saved' : 'missing';" 2>/dev/null | tail -n 1)"
+      [[ "$saved" == saved ]] ||
+        warn "Couldn't store the proxy settings in Coolify: a dashboard \"Restart Proxy\" would drop the forwardedHeaders lines again. In Coolify, open Servers → localhost → Proxy, paste in the contents of $PROXY and save."
+    fi
   fi
 fi
 
