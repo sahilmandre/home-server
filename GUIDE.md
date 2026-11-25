@@ -460,7 +460,7 @@ ssh homeserver sudo reboot
    - A power cut, simulated with the charger unplugged: the server shut down, switched itself on every 2 minutes (for the test) and back off while the charger was out, and started normally once it was plugged in. It also wakes on time when the charger is plugged in while it's off.
    - A real 4-hour run on battery, with the limit then at 15%, showed that a worn battery can't be run that low (see "Power cuts" in [section 6](#6-keep-it-healthy)), so the limit is now 40%.
 
-Test leftovers you can delete whenever you like: the Coolify project **samples** (sample-node, sample-vite, sample-db, autodeploy-ghapp), and the private GitHub repo **homeserver-autodeploy-test**.
+The test apps from the setup (Coolify project **samples**: sample-node, sample-vite, sample-db and autodeploy-ghapp) were deleted on 26 November, with their data and images. job-mailer never used sample-db: its data is on MongoDB Atlas. The private GitHub repo **homeserver-autodeploy-test** is no longer used by anything, so you can delete it on GitHub whenever you like.
 
 ## 10. Words you'll see
 
